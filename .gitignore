@@ -168,3 +168,6 @@ cython_debug/
 
 # temporary test files
 tmp_tests/
+
+# pre-processed data
+data/pre-processed/
