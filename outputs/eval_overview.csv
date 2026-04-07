@@ -1,0 +1,5 @@
+split,dataset_path,total,answer_correct,format_correct,reward_1,formatted_but_answer_wrong,answer_accuracy
+train,data/pre-processed/math/train.jsonl,12000,276,1511,276,1235,0.023
+test,data/pre-processed/math/test.jsonl,500,12,71,12,59,0.024
+train,data/pre-processed/gsm8k/train.jsonl,7473,254,1459,254,1205,0.033989027164458716
+test,data/pre-processed/gsm8k/test.jsonl,1319,25,224,25,199,0.018953752843062926
