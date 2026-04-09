@@ -1,6 +1,9 @@
 *.bin
 models/
 data/
+!data/
+data/*
+!data/pre-processed/
 
 nav
 tags
@@ -169,5 +172,4 @@ cython_debug/
 # temporary test files
 tmp_tests/
 
-# pre-processed data
-data/pre-processed/
+# data/pre-processed is tracked (exclude pattern is at top of file)
