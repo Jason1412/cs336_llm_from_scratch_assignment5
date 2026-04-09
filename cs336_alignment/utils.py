@@ -81,10 +81,6 @@ def get_ctx(use_mixed: bool, device: torch.device, verbose: bool = True):
         return nullcontext()
 
 
-def print_color(content: str, color: str = "green"):
-    print(f"[{color}]{content}[/{color}]")
-
-
 def to_float(x):
     if isinstance(x, torch.Tensor):
         return x.float().item()
@@ -98,3 +94,32 @@ def clear_memory():
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.ipc_collect()
+
+
+def save_model_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    cur_step: int | None,
+    checkpoint_path: str,
+):
+    state = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    }
+    if cur_step is not None:
+        state["cur_step"] = cur_step
+
+    torch.save(state, checkpoint_path)
+    print_color(f"Saved model checkpoint to {checkpoint_path}", "cyan")
+
+
+def seed_everything(seed: int):
+    import random
+
+    import numpy as np
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)

@@ -5,7 +5,6 @@ from cs336_alignment.base_config import BaseConfig
 from torch.utils.data import DataLoader, Dataset
 from cs336_alignment.utils import (
     load_dataset,
-    tokenize_prompt_and_output,
     cycle_dataloader,
     get_ctx,
     print_color,
@@ -20,7 +19,10 @@ from cs336_alignment.algos.grpo_utils import REWARD_FN_MAP
 from cs336_alignment.eval import evaluate_responses
 import random
 from tqdm import trange
-from cs336_alignment.algos.sft_utils import get_response_log_probs
+from cs336_alignment.algos.sft_utils import (
+    get_response_log_probs,
+    tokenize_prompt_and_output,
+)
 from cs336_alignment.utils import to_float
 from torch import nn
 from cs336_alignment.lr import update_learning_rate, get_lr
@@ -92,6 +94,8 @@ class SFTTrainingConfig(BaseConfig):
     # Evaluation and sampling
     eval_steps: int = 5
     seed: int = 42
+
+    reward_fn: str = "r1_zero_reward_fn"
 
     # For vllm sampling during evaluation and response sampling
     sampling_temperature: float = 1.0

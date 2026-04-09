@@ -6,7 +6,7 @@ import fire
 import torch
 from transformers import AutoModelForCausalLM
 
-from cs336_alignment.algos import SFTTrainer, SFTTrainingConfig
+from cs336_alignment.algos.sft import SFTTrainer, SFTTrainingConfig
 from cs336_alignment.utils import (
     get_device,
     print_color,

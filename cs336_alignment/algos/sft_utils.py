@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from typing import Callable
-from vllm_utils import generate_responses
+from cs336_alignment.vllm_utils import generate_responses
 
 
 def tokenize_prompt_and_output(
