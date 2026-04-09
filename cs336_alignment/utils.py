@@ -1,6 +1,8 @@
 import rich
 import torch
 import json
+from contextlib import nullcontext
+import gc
 
 
 def wrap_cot_with_answer(cot: str, answer: str) -> str:
@@ -52,3 +54,47 @@ def load_dataset(path: str, prompt_template_path: str = ""):
         answers.append(row["answer"])
 
     return prompts, cots, answers
+
+
+def cycle_dataloader(data_loader):
+    while True:
+        for batch in data_loader:
+            yield batch
+
+
+def get_ctx(use_mixed: bool, device: torch.device, verbose: bool = True):
+    if use_mixed and device.type == "cuda":
+        if verbose:
+            print_color("Using mixed precision on CUDA with BFloat16", "blue")
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    elif use_mixed and device.type == "mps":
+        if verbose:
+            print_color("Using mixed precision on MPS with Float16", "blue")
+        return torch.autocast(device_type="mps", dtype=torch.float16)
+    elif use_mixed and device.type == "cpu":
+        if verbose:
+            print_color("Using mixed precision on CPU with Float16", "blue")
+        return torch.autocast(device_type="cpu", dtype=torch.float16)
+    else:
+        if verbose:
+            print_color("Not using mixed precision", "blue")
+        return nullcontext()
+
+
+def print_color(content: str, color: str = "green"):
+    print(f"[{color}]{content}[/{color}]")
+
+
+def to_float(x):
+    if isinstance(x, torch.Tensor):
+        return x.float().item()
+    elif isinstance(x, str):
+        return float(x.strip())
+
+    return float(x)
+
+
+def clear_memory():
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
