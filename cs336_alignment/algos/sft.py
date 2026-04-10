@@ -159,7 +159,7 @@ def sft_collate_fn(batch, tokenizer):
     prompts, cots, answers = zip(*batch)
     tokenized = tokenize_prompt_and_output(
         prompt_strs=list(prompts),
-        otuput_strs=list(cots),
+        output_strs=list(cots),
         tokenizer=tokenizer,
     )
     return tokenized
