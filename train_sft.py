@@ -40,7 +40,7 @@ def main(
     model_device = get_device(rank=0, verbose=False)
     model = AutoModelForCausalLM.from_pretrained(
         pretrained_model_name_or_path=train_config.model_name,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         attn_implementation="flash_attention_2",
         device_map="cpu",
     )
