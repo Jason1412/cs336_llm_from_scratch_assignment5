@@ -6,7 +6,7 @@ so you can load it locally later.
 Examples:
   python download_model.py \
     --repo-id Qwen/Qwen2.5-Math-1.5B \
-    --save-dir /models/Qwen2.5-Math-1.5B \
+    --save-dir ./models/Qwen2.5-Math-1.5B \
     --method snapshot --no-symlinks --verify
 
   python download_model.py \

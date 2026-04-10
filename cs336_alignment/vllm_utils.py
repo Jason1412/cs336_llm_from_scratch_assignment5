@@ -24,6 +24,7 @@ def init_vllm(
                 dtype=torch.float16,
                 enable_prefix_caching=True,
                 gpu_memory_utilization=gpu_memory_utilization,
+                enforce_eager=True,
             )
         except Exception as e:
             print(
