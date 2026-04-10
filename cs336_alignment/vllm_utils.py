@@ -54,5 +54,8 @@ def load_policy_into_vllm_instance(policy: PreTrainedModel, llm: LLM):
     22759c820867c8659d00082ba8cf004e963873c1/trl/trainer/grpo_trainer.py#L670.
     """
     state_dict = policy.state_dict()
+    # Move to CPU to avoid cross-GPU OOM when loading into vLLM's GPU.
+    # Avoids allocating a temporary GPU buffer for the device-to-device copy.
+    cpu_state_dict = {k: v.cpu() for k, v in state_dict.items()}
     llm_model = llm.llm_engine.model_executor.driver_worker.model_runner.model
-    llm_model.load_weights(state_dict.items())
+    llm_model.load_weights(cpu_state_dict.items())

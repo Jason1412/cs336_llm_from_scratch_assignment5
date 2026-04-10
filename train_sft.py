@@ -32,7 +32,7 @@ def main(
     vllm = init_vllm(
         model_id=train_config.model_name,
         device=str(vllm_device),
-        gpu_memory_utilization=0.85,
+        gpu_memory_utilization=0.6,
         seed=train_config.seed,
     )
     print_color(f"Initialized VLLM on {str(vllm_device)}", color="cyan")
