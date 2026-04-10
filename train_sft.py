@@ -54,7 +54,7 @@ def main(
         wandb_api = os.getenv("WANDB_API_KEY")
         if wandb_api is None:
             raise ValueError("WANDB_API_KEY not found in environment variables")
-        wandb.login(key=wandb_api)
+        # wandb.login(key=wandb_api)
         wandb.init(
             project=train_config.project_name,
             name=train_config.run_name,

@@ -176,7 +176,7 @@ class SFTTrainer:
         # -------------------- Model and Optimizer Setup --------------------
         self.model = model
         self.device = device
-        self.train_config = (train_config,)
+        self.train_config = train_config
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=train_config.model_name,
