@@ -78,7 +78,7 @@ def main(
         model=sft_trainer.model,
         optimizer=sft_trainer.optimizer,
         cur_step=sft_trainer.train_config.total_training_steps,
-        checkpoitn_path=checkpoint_file,
+        checkpoint_path=checkpoint_file,
     )
 
     # Cleanup
