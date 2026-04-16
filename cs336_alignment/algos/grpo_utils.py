@@ -423,11 +423,11 @@ class GRPOTrainer:
             betas=train_config.betas,
             lr=self.train_config.max_lr,
             weight_decay=self.train_config.weight_decay,
-            # foreach=True (the default) uses _multi_tensor_adamw which allocates
-            # a ~28 MiB contiguous temp buffer for foreach_sqrt over all params.
-            # With <30 MiB free after microbatch training, this causes OOM.
-            # foreach=False processes one parameter tensor at a time instead.
-            foreach=False,
+            # fused=True executes the entire param update in a single fused CUDA kernel
+            # without allocating intermediate tensors like exp_avg_sq.sqrt(). This is
+            # critical because lm_head.weight is massive, and its intermediates
+            # consume ~446 MiB which OOMs the step.
+            fused=True,
         )
 
         self.ctx = get_ctx(
