@@ -16,6 +16,9 @@ def main(
     dataset_name: str = "math",
 ):
     logging.getLogger("vllm").setLevel(logging.WARNING)
+    # Allow fragmented reserved-but-unallocated memory to be reused (avoids
+    # OOM due to fragmentation when large tensors like fp32 logits are allocated).
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     dotenv.load_dotenv()
 
     train_config = GRPOTrainConfig.from_json(train_config_path)
