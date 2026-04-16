@@ -193,11 +193,17 @@ class _FusedLMHeadLogProb(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out):
-        # grad_out : (B*T,)
+        # grad_out : (B*T,) — may be float32 if the GRPO loss mixes dtypes
         hidden, labels, lse = ctx.saved_tensors
         weight, bias = ctx.weight, ctx.bias
         chunk_size = ctx.chunk_size
         V = weight.shape[0]
+        dt = hidden.dtype
+
+        # Cast incoming gradient to the native dtype of hidden/weight (bfloat16).
+        # The GRPO loss computes bfloat16 log_probs through float32 advantages,
+        # which causes grad_out to arrive as float32.
+        grad_out = grad_out.to(dt)
 
         grad_hidden = torch.zeros_like(hidden)  # (B*T, H) ← ~5 MiB
 
