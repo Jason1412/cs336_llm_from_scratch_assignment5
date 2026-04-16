@@ -20,6 +20,7 @@ from cs336_alignment.vllm_utils import init_vllm
 def main(
     train_config_path: str = "configs/grpo/train_r1_math.json",
     dataset_name: str = "math",
+    resume: bool = False,
 ):
     logging.getLogger("vllm").setLevel(logging.WARNING)
     dotenv.load_dotenv()
@@ -87,6 +88,13 @@ def main(
         train_config=train_config,
         device=model_device,
     )
+
+    if resume:
+        from cs336_alignment.vllm_utils import load_policy_into_vllm_instance
+        grpo_trainer.resume_from_latest_checkpoint()
+        # Sync resumed model weights into vLLM so generation matches
+        load_policy_into_vllm_instance(model, vllm)
+
     grpo_trainer.train(vllm=vllm)
 
     print_color("Training completed. Saving final model checkpoint...", color="green")

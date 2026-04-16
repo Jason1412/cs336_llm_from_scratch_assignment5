@@ -474,6 +474,51 @@ class GRPOTrainer:
 
         self.grpo_cur_step = 0
 
+    def resume_from_latest_checkpoint(self):
+        """Find the latest step_N checkpoint and restore model, optimizer, and step."""
+        import glob
+        step_dirs = glob.glob(os.path.join(self.checkpoint_path, "step_*"))
+        if not step_dirs:
+            print_color("No checkpoints found, starting from scratch.", color="yellow")
+            return
+
+        # Extract step numbers and find the max
+        def _step_num(path):
+            base = os.path.basename(path)
+            try:
+                return int(base.split("_")[1])
+            except (IndexError, ValueError):
+                return -1
+
+        latest = max(step_dirs, key=_step_num)
+        step = _step_num(latest)
+        if step < 0:
+            print_color("Could not parse checkpoint step, starting from scratch.", color="yellow")
+            return
+
+        print_color(f"Resuming from checkpoint: {latest} (step {step})", color="cyan")
+
+        # Load model weights
+        from transformers import AutoModelForCausalLM
+        state_dict = AutoModelForCausalLM.from_pretrained(
+            latest, torch_dtype=torch.bfloat16
+        ).state_dict()
+        self.model.load_state_dict(state_dict)
+        del state_dict
+        clear_memory()
+
+        # Load optimizer state if saved
+        opt_path = os.path.join(latest, "optimizer.pt")
+        if os.path.exists(opt_path):
+            opt_state = torch.load(opt_path, map_location=self.device, weights_only=True)
+            self.optimizer.load_state_dict(opt_state)
+            del opt_state
+            clear_memory()
+            print_color("Restored optimizer state.", color="cyan")
+
+        self.grpo_cur_step = step
+        print_color(f"Will resume training from step {step + 1}.", color="green")
+
     @torch.no_grad()
     def evaluate(self, vllm=None):
         print_color(
@@ -676,9 +721,8 @@ class GRPOTrainer:
         }
 
     def train(self, vllm):
-        for _ in range(
-            self.train_config.n_grpo_cur_steps,
-        ):
+        remaining = self.train_config.n_grpo_cur_steps - self.grpo_cur_step
+        for _ in range(remaining):
             self.grpo_cur_step += 1
             print_color(
                 f"\n=== GRPO Training Step {self.grpo_cur_step} / {self.train_config.n_grpo_cur_steps} ===",
@@ -722,6 +766,8 @@ class GRPOTrainer:
                 )
                 clear_memory()
                 self.model.save_pretrained(ckpt_dir)
+                torch.save(self.optimizer.state_dict(),
+                           os.path.join(ckpt_dir, "optimizer.pt"))
                 clear_memory()
 
             wandb.log(log_dict, step=self.grpo_cur_step)
