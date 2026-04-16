@@ -383,6 +383,7 @@ class GRPOTrainConfig(BaseConfig):
     # Others
     mixed_precision_training: bool = True
     eval_interval: int = 5
+    checkpoint_interval: int = 50
     checkpoint_dir: str = "./checkpoints/grpo"
     seed: int = 42
 
@@ -755,8 +756,8 @@ class GRPOTrainer:
                 ]
                 log_dict["eval/reward_1"] = out["reward_1"]
 
-            # Save checkpoint every 50 steps
-            if self.grpo_cur_step % 50 == 0:
+            # Save checkpoint periodically
+            if self.grpo_cur_step % self.train_config.checkpoint_interval == 0:
                 ckpt_dir = os.path.join(
                     self.checkpoint_path, f"step_{self.grpo_cur_step}"
                 )
