@@ -423,6 +423,11 @@ class GRPOTrainer:
             betas=train_config.betas,
             lr=self.train_config.max_lr,
             weight_decay=self.train_config.weight_decay,
+            # foreach=True (the default) uses _multi_tensor_adamw which allocates
+            # a ~28 MiB contiguous temp buffer for foreach_sqrt over all params.
+            # With <30 MiB free after microbatch training, this causes OOM.
+            # foreach=False processes one parameter tensor at a time instead.
+            foreach=False,
         )
 
         self.ctx = get_ctx(
