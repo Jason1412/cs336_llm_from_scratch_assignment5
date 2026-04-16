@@ -214,14 +214,17 @@ class _FusedLMHeadLogProb(torch.autograd.Function):
             if bias is not None and bias.grad is None:
                 bias.grad = torch.zeros_like(bias)
 
-        go = grad_out.unsqueeze(-1)  # (B*T, 1)
+        # lse and logits may have been silently upcast to float32 by .log()/.exp()
+        # on some CUDA builds; pin them back to bfloat16 explicitly.
+        lse = lse.to(dt)
+        go = grad_out.unsqueeze(-1)  # (B*T, 1), bfloat16
         for s in range(0, V, chunk_size):
             e = min(s + chunk_size, V)
-            w_c = weight[s:e]                                        # (C, H) view
+            w_c = weight[s:e]                                   # (C, H) view
             b_c = None if bias is None else bias[s:e]
-            logits_c = F.linear(hidden, w_c, b_c)                   # (B*T, C) recompute
-            softmax_c = (logits_c - lse.unsqueeze(-1)).exp()        # (B*T, C)
-            grad_c = softmax_c * go                                  # (B*T, C)
+            logits_c = F.linear(hidden, w_c, b_c).to(dt)       # (B*T, C) bfloat16
+            softmax_c = (logits_c - lse.unsqueeze(-1)).exp()   # (B*T, C) bfloat16
+            grad_c = softmax_c * go                             # (B*T, C) bfloat16
 
             in_c = (labels >= s) & (labels < e)
             if in_c.any():
