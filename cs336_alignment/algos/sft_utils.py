@@ -283,12 +283,34 @@ def get_response_log_probs(
 
     if return_token_entropy:
         with torch.no_grad():
-            _, token_entropy = _chunked_log_probs_and_entropy(
-                # recompute logits chunked for entropy (no grad needed)
-                F.linear(hidden.detach().view(B * T, H), weight).view(B, T, -1),
-                labels,
-                return_entropy=True,
-            )
+            h = hidden.detach().view(B * T, H)
+            # Compute entropy by chunking the lm_head matmul over vocab —
+            # never materialises the full (B*T, V) logits tensor (~446 MiB).
+            # Peak per chunk: 3 × (B*T × chunk_size) ≈ 36 MiB.
+            chunk = _VOCAB_CHUNK
+            V = weight.shape[0]
+            dt = h.dtype
+
+            # Pass 1: max over vocab for numerical stability
+            max_l = torch.full((B * T,), float("-inf"), device=h.device, dtype=dt)
+            for s in range(0, V, chunk):
+                c = F.linear(h, weight[s : s + chunk],
+                             None if bias is None else bias[s : s + chunk])
+                max_l = torch.maximum(max_l, c.max(dim=-1).values)
+
+            # Pass 2: sum_exp and weighted_shifted for entropy
+            sum_exp = torch.zeros(B * T, device=h.device, dtype=dt)
+            w_shifted = torch.zeros(B * T, device=h.device, dtype=dt)
+            for s in range(0, V, chunk):
+                c = F.linear(h, weight[s : s + chunk],
+                             None if bias is None else bias[s : s + chunk])
+                shifted = c - max_l.unsqueeze(-1)
+                exp_s = shifted.exp()
+                sum_exp += exp_s.sum(dim=-1)
+                w_shifted += (exp_s * shifted).sum(dim=-1)
+
+            # H = log(sum_exp) - weighted_shifted / sum_exp
+            token_entropy = (sum_exp.log() - w_shifted / sum_exp).view(B, T)
         res["token_entropy"] = token_entropy
 
     return res
