@@ -144,8 +144,96 @@ def compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     return entropy
 
 
+class _FusedLMHeadLogProb(torch.autograd.Function):
+    """Fused lm_head + per-token log-prob that never materialises (B*T, V).
+
+    Forward  : two passes over vocab chunks → O(B*T*C) peak per chunk.
+    Backward : recomputes logit chunks, accumulates grad_weight IN-PLACE into
+               weight.grad, returns only grad_hidden (B*T × H, tiny).
+               Peak extra memory per chunk ≈ 3 × (B*T × C) ≈ 36 MiB.
+    """
+
+    @staticmethod
+    def forward(ctx, hidden, labels, weight, bias, chunk_size):
+        # hidden : (B*T, H),  labels : (B*T,)
+        # weight : (V, H),    bias   : (V,) or None
+        B_T, H = hidden.shape
+        V = weight.shape[0]
+        dev, dt = hidden.device, hidden.dtype
+
+        # Pass 1 – per-token max for numerical stability
+        max_l = torch.full((B_T,), float("-inf"), device=dev, dtype=dt)
+        for s in range(0, V, chunk_size):
+            c = F.linear(hidden, weight[s : s + chunk_size],
+                         None if bias is None else bias[s : s + chunk_size])
+            max_l = torch.maximum(max_l, c.max(dim=-1).values)
+
+        # Pass 2 – sum_exp and target logit
+        sum_exp = torch.zeros(B_T, device=dev, dtype=dt)
+        tgt = torch.zeros(B_T, device=dev, dtype=dt)
+        for s in range(0, V, chunk_size):
+            e = min(s + chunk_size, V)
+            c = F.linear(hidden, weight[s:e],
+                         None if bias is None else bias[s:e])
+            sum_exp += (c - max_l.unsqueeze(-1)).exp().sum(-1)
+            in_c = (labels >= s) & (labels < e)
+            if in_c.any():
+                loc = (labels - s).clamp(0, e - s - 1)
+                tgt = torch.where(in_c, c.gather(1, loc.unsqueeze(1)).squeeze(1), tgt)
+
+        lse = max_l + sum_exp.log()
+        log_probs = tgt - lse
+
+        ctx.save_for_backward(hidden, labels, lse)
+        # Store weight/bias as Python attrs (already in GPU memory as params)
+        ctx.weight = weight
+        ctx.bias = bias
+        ctx.chunk_size = chunk_size
+        return log_probs
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        # grad_out : (B*T,)
+        hidden, labels, lse = ctx.saved_tensors
+        weight, bias = ctx.weight, ctx.bias
+        chunk_size = ctx.chunk_size
+        V = weight.shape[0]
+
+        grad_hidden = torch.zeros_like(hidden)  # (B*T, H) ← ~5 MiB
+
+        # Initialise .grad buffers if this is the first microbatch
+        with torch.no_grad():
+            if weight.grad is None:
+                weight.grad = torch.zeros_like(weight)
+            if bias is not None and bias.grad is None:
+                bias.grad = torch.zeros_like(bias)
+
+        go = grad_out.unsqueeze(-1)  # (B*T, 1)
+        for s in range(0, V, chunk_size):
+            e = min(s + chunk_size, V)
+            w_c = weight[s:e]                                        # (C, H) view
+            b_c = None if bias is None else bias[s:e]
+            logits_c = F.linear(hidden, w_c, b_c)                   # (B*T, C) recompute
+            softmax_c = (logits_c - lse.unsqueeze(-1)).exp()        # (B*T, C)
+            grad_c = softmax_c * go                                  # (B*T, C)
+
+            in_c = (labels >= s) & (labels < e)
+            if in_c.any():
+                idx = in_c.nonzero(as_tuple=True)[0]
+                grad_c[idx, labels[idx] - s] -= grad_out[idx]
+
+            grad_hidden.addmm_(grad_c, w_c)   # (B*T,H) += (B*T,C)@(C,H)
+            with torch.no_grad():
+                weight.grad[s:e].addmm_(grad_c.t(), hidden)  # (C,H) in-place
+                if bias is not None:
+                    bias.grad[s:e] += grad_c.sum(0)
+
+        # Return None for weight/bias grads – accumulated manually above
+        return grad_hidden, None, None, None, None
+
+
 def get_response_log_probs(
-    model,  # PreTrainedModel
+    model,  # PreTrainedModel (Qwen2ForCausalLM)
     input_ids: torch.Tensor,
     labels: torch.Tensor,
     return_token_entropy: bool = False,
@@ -153,58 +241,47 @@ def get_response_log_probs(
     """
     Args:
         model: PreTrainedModel
-        input_ids: torch.Tensor, shape = (batch_size, sequence_length)
-        labels: torch.Tensor, shape = (batch_size, sequence_length)
+        input_ids: (batch_size, sequence_length)
+        labels:    (batch_size, sequence_length)
         return_token_entropy: bool
-    Returns:
-        dict with keys "log_probs" and optionally "token_entropy".
 
-    Memory note
-    -----------
-    We use F.cross_entropy for log-probs.  Its fused CUDA kernel computes
-    logsumexp in a single reduction pass *without* materialising the full
-    (B, T, vocab_size) probability tensor, and its autograd backward also
-    avoids that allocation.  This replaces both the naive F.log_softmax
-    approach (which allocates ~1.56 GiB) and the chunked approach (which
-    stores ~3.3 GiB of chunk intermediates in the autograd graph).
+    Memory design
+    -------------
+    Qwen2 casts logits to float32 internally and cross_entropy backward requires
+    a (B*T, V) softmax tensor simultaneously with the stored logits – peak ~892 MiB
+    that does not fit after optimizer states are created.
 
-    Entropy is purely for logging and does not need gradients, so it is
-    computed under torch.no_grad() using the chunked helper.
+    Instead we call model.model() to get hidden_states (B, T, H), then use
+    _FusedLMHeadLogProb which chunks the lm_head projection and backward over the
+    vocab dimension.  Peak extra memory per chunk ≈ 3 × (B*T × 4096) ≈ 36 MiB.
     """
-    logits = model(input_ids).logits  # (B, T, V)
-    # Qwen2 explicitly casts logits to float32 (logits = logits.float() in its
-    # forward), creating a (B, T, vocab) float32 tensor.  During backward,
-    # cross_entropy needs the stored logits PLUS a new same-size softmax tensor
-    # simultaneously → 2× the logit memory peak.
-    # Casting to bfloat16 here frees the float32 block immediately (it goes to
-    # PyTorch's pool) while storing a half-size bfloat16 version in the autograd
-    # graph.  Backward grad stays bfloat16 → peak is ~1× not ~2× logit size.
-    if logits.dtype != torch.bfloat16:
-        logits = logits.bfloat16()
-    B, T, V = logits.shape
+    # Run transformer body (gradient checkpointing active inside)
+    hidden = model.model(input_ids)[0]          # (B, T, H)
+    B, T, H = hidden.shape
 
-    # F.cross_entropy wants (N, C) logits and (N,) labels.
-    # It returns the negative log-prob of the target token per position.
-    log_probs = -F.cross_entropy(
-        logits.view(B * T, V),
+    weight = model.lm_head.weight               # (V, H) – model param
+    bias = getattr(model.lm_head, "bias", None) # None for Qwen2
+
+    log_probs = _FusedLMHeadLogProb.apply(
+        hidden.view(B * T, H),
         labels.view(B * T),
-        reduction="none",
+        weight,
+        bias,
+        _VOCAB_CHUNK,
     ).view(B, T)
 
     res = {"log_probs": log_probs}
 
     if return_token_entropy:
-        # Entropy is only used for logging — no gradient needed.
         with torch.no_grad():
-            dummy = torch.zeros(
-                logits.shape[:-1], dtype=torch.long, device=logits.device
-            )
             _, token_entropy = _chunked_log_probs_and_entropy(
-                logits.detach(), dummy, return_entropy=True
+                # recompute logits chunked for entropy (no grad needed)
+                F.linear(hidden.detach().view(B * T, H), weight).view(B, T, -1),
+                labels,
+                return_entropy=True,
             )
         res["token_entropy"] = token_entropy
 
-    del logits
     return res
 
 
