@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 from typing import Callable
 from cs336_alignment.vllm_utils import generate_responses
@@ -157,17 +158,44 @@ def get_response_log_probs(
         return_token_entropy: bool
     Returns:
         dict with keys "log_probs" and optionally "token_entropy".
+
+    Memory note
+    -----------
+    We use F.cross_entropy for log-probs.  Its fused CUDA kernel computes
+    logsumexp in a single reduction pass *without* materialising the full
+    (B, T, vocab_size) probability tensor, and its autograd backward also
+    avoids that allocation.  This replaces both the naive F.log_softmax
+    approach (which allocates ~1.56 GiB) and the chunked approach (which
+    stores ~3.3 GiB of chunk intermediates in the autograd graph).
+
+    Entropy is purely for logging and does not need gradients, so it is
+    computed under torch.no_grad() using the chunked helper.
     """
     logits = model(input_ids).logits  # (B, T, V)
+    B, T, V = logits.shape
 
-    log_probs, token_entropy = _chunked_log_probs_and_entropy(
-        logits, labels, return_entropy=return_token_entropy
-    )
-    del logits  # free the large tensor before returning
+    # F.cross_entropy wants (N, C) logits and (N,) labels.
+    # It returns the negative log-prob of the target token per position.
+    log_probs = -F.cross_entropy(
+        logits.view(B * T, V),
+        labels.view(B * T),
+        reduction="none",
+    ).view(B, T)
 
     res = {"log_probs": log_probs}
+
     if return_token_entropy:
+        # Entropy is only used for logging — no gradient needed.
+        with torch.no_grad():
+            dummy = torch.zeros(
+                logits.shape[:-1], dtype=torch.long, device=logits.device
+            )
+            _, token_entropy = _chunked_log_probs_and_entropy(
+                logits.detach(), dummy, return_entropy=True
+            )
         res["token_entropy"] = token_entropy
+
+    del logits
     return res
 
 
