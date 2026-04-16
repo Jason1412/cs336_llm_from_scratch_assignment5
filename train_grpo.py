@@ -60,6 +60,11 @@ def main(
         device_map="cpu",
     )
     model.to(model_device)
+    # Recompute activations during backward instead of storing all 28 layers'
+    # intermediates.  Saves ~3-5 GB of GPU memory at the cost of ~30% slower backward.
+    model.gradient_checkpointing_enable(
+        gradient_checkpointing_kwargs={"use_reentrant": False}
+    )
     print_color(f"Loaded model to {str(model_device)}", color="cyan")
 
     if train_config.wandb_logging:
