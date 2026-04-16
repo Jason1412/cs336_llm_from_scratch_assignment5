@@ -686,6 +686,11 @@ class GRPOTrainer:
                 self.model,
                 vllm,
             )
+            # state_dict() inside load_policy_into_vllm_instance temporarily
+            # allocates the full model weights on GPU (~3 GB) before copying to
+            # CPU.  PyTorch keeps that memory in its reserved pool; flush it
+            # now so the next grpo_train_step starts with a clean slate.
+            clear_memory()
 
             if self.grpo_cur_step % self.train_config.eval_interval == 0:
                 clear_memory()
