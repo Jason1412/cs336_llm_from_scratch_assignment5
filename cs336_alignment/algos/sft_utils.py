@@ -172,6 +172,15 @@ def get_response_log_probs(
     computed under torch.no_grad() using the chunked helper.
     """
     logits = model(input_ids).logits  # (B, T, V)
+    # Qwen2 explicitly casts logits to float32 (logits = logits.float() in its
+    # forward), creating a (B, T, vocab) float32 tensor.  During backward,
+    # cross_entropy needs the stored logits PLUS a new same-size softmax tensor
+    # simultaneously → 2× the logit memory peak.
+    # Casting to bfloat16 here frees the float32 block immediately (it goes to
+    # PyTorch's pool) while storing a half-size bfloat16 version in the autograd
+    # graph.  Backward grad stays bfloat16 → peak is ~1× not ~2× logit size.
+    if logits.dtype != torch.bfloat16:
+        logits = logits.bfloat16()
     B, T, V = logits.shape
 
     # F.cross_entropy wants (N, C) logits and (N,) labels.
