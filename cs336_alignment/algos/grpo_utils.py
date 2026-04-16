@@ -711,4 +711,17 @@ class GRPOTrainer:
                 ]
                 log_dict["eval/reward_1"] = out["reward_1"]
 
+            # Save checkpoint every 50 steps
+            if self.grpo_cur_step % 50 == 0:
+                ckpt_dir = os.path.join(
+                    self.checkpoint_path, f"step_{self.grpo_cur_step}"
+                )
+                print_color(
+                    f"Saving checkpoint at step {self.grpo_cur_step} to {ckpt_dir}",
+                    color="cyan",
+                )
+                clear_memory()
+                self.model.save_pretrained(ckpt_dir)
+                clear_memory()
+
             wandb.log(log_dict, step=self.grpo_cur_step)
