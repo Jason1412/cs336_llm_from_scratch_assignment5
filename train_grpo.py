@@ -91,9 +91,10 @@ def main(
 
     if resume:
         from cs336_alignment.vllm_utils import load_policy_into_vllm_instance
-        grpo_trainer.resume_from_latest_checkpoint()
-        # Sync resumed model weights into vLLM so generation matches
-        load_policy_into_vllm_instance(model, vllm)
+        did_resume = grpo_trainer.resume_from_latest_checkpoint()
+        if did_resume:
+            # Sync resumed model weights into vLLM so generation matches
+            load_policy_into_vllm_instance(model, vllm)
 
     grpo_trainer.train(vllm=vllm)
 

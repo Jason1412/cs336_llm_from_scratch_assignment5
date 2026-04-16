@@ -481,7 +481,7 @@ class GRPOTrainer:
         step_dirs = glob.glob(os.path.join(self.checkpoint_path, "step_*"))
         if not step_dirs:
             print_color("No checkpoints found, starting from scratch.", color="yellow")
-            return
+            return False
 
         # Extract step numbers and find the max
         def _step_num(path):
@@ -495,7 +495,7 @@ class GRPOTrainer:
         step = _step_num(latest)
         if step < 0:
             print_color("Could not parse checkpoint step, starting from scratch.", color="yellow")
-            return
+            return False
 
         print_color(f"Resuming from checkpoint: {latest} (step {step})", color="cyan")
 
@@ -519,6 +519,7 @@ class GRPOTrainer:
 
         self.grpo_cur_step = step
         print_color(f"Will resume training from step {step + 1}.", color="green")
+        return True
 
     @torch.no_grad()
     def evaluate(self, vllm=None):
