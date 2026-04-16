@@ -580,6 +580,12 @@ class GRPOTrainer:
         old_log_probs = torch.cat(old_log_probs, dim=0)
         self.model.train()
 
+        # The 256 no-grad forward passes above leave ~600-700 MiB of fragmented
+        # reserved-but-free blocks in PyTorch's caching allocator pool.  Before the
+        # training backward() runs and needs a contiguous 446 MiB block, return all
+        # free cached blocks to CUDA so the driver can provide a single contiguous chunk.
+        torch.cuda.empty_cache()
+
         n_train_steps = self.train_config.epochs_per_rollout_batch * (
             self.train_config.rollout_batch_size // self.train_config.train_batch_size
         )
