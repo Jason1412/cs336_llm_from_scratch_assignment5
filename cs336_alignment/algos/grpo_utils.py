@@ -1,8 +1,7 @@
-import json
 import os
 import random
 from dataclasses import dataclass, field
-from typing import Callable, Literal
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -466,7 +465,7 @@ class GRPOTrainer:
             stop=self.train_config.sampling_stop_tokens,
         )
 
-        self.reward_fn = REWARD_FN_MAP(self.train_config.reward_fn)
+        self.reward_fn = REWARD_FN_MAP[self.train_config.reward_fn]
 
         self.grpo_cur_step = 0
 
