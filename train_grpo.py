@@ -20,17 +20,31 @@ def main(
 
     train_config = GRPOTrainConfig.from_json(train_config_path)
     train_config.dataset_name = dataset_name
-    seed_everything(train_config.seed)
 
-    # init vllm
-    vllm_device = get_device(rank=1, verbose=False)
+    # ── vLLM initialisation (must happen before ANY CUDA call) ─────────────────
+    # torch.cuda.manual_seed_all() (called inside seed_everything) initialises a
+    # CUDA context on EVERY visible GPU, consuming ~1 GB per GPU.  By restricting
+    # CUDA_VISIBLE_DEVICES to GPU 1 *before* any CUDA call we ensure vLLM gets the
+    # full memory budget of that card.  We restore the env-var afterwards so the
+    # training model can use GPU 0 normally.
+    _orig_cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     vllm = init_vllm(
         model_id=train_config.model_name,
-        device=str(vllm_device),
+        device="cuda:0",  # GPU 1 appears as cuda:0 inside the restricted env
         gpu_memory_utilization=0.85,
         seed=train_config.seed,
     )
+    # Restore full GPU visibility before seeding / loading the training model.
+    if _orig_cuda_visible is None:
+        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = _orig_cuda_visible
+    vllm_device = get_device(rank=1, verbose=False)
     print_color(f"Initialized VLLM on {str(vllm_device)}", color="cyan")
+
+    # Now safe to seed — CUDA context on GPU 1 is already established by vLLM
+    seed_everything(train_config.seed)
 
     model_device = get_device(rank=0, verbose=False)
     model = AutoModelForCausalLM.from_pretrained(
