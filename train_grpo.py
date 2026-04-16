@@ -1,6 +1,12 @@
 import logging
 import os
 
+# Must be set before torch is imported; PyTorch's CUDA allocator reads this
+# env-var when the allocator is first initialised (at first CUDA use).
+# expandable_segments:True lets the allocator grow segments without
+# requiring large contiguous free blocks, preventing OOM from fragmentation.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import dotenv
 import fire
 import torch
@@ -16,9 +22,6 @@ def main(
     dataset_name: str = "math",
 ):
     logging.getLogger("vllm").setLevel(logging.WARNING)
-    # Allow fragmented reserved-but-unallocated memory to be reused (avoids
-    # OOM due to fragmentation when large tensors like fp32 logits are allocated).
-    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     dotenv.load_dotenv()
 
     train_config = GRPOTrainConfig.from_json(train_config_path)

@@ -647,6 +647,10 @@ class GRPOTrainer:
                 self.train_config.max_grad_norm,
             )
 
+            # Free fragmented reserved memory before the optimizer step.
+            # AdamW's _multi_tensor_adamw allocates temp buffers (e.g. for
+            # foreach_sqrt) that need contiguous CUDA blocks.
+            torch.cuda.empty_cache()
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)
 
