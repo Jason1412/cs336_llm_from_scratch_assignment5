@@ -105,11 +105,13 @@ def get_response_log_probs(
     """
     logits = model(input_ids).logits
 
-    log_all_probs = F.log_softmax(logits, dim=-1)
-
-    log_probs = torch.gather(log_all_probs, dim=-1, index=labels.unsqueeze(-1)).squeeze(
-        -1
-    )
+    # Memory-efficient log-prob computation.
+    # F.log_softmax(logits) would allocate a full (batch, seq_len, vocab_size) tensor
+    # (~1.6 GiB for Qwen2.5 with vocab=152k and seq_len=1024).
+    # Instead: log p(token) = logit[token] - logsumexp(logits), which only ever
+    # allocates (batch, seq_len)-shaped intermediates.
+    token_logits = torch.gather(logits, dim=-1, index=labels.unsqueeze(-1)).squeeze(-1)
+    log_probs = token_logits - torch.logsumexp(logits, dim=-1)
 
     res = {
         "log_probs": log_probs,

@@ -644,11 +644,11 @@ class GRPOTrainer:
 
             grad_norm = nn.utils.clip_grad_norm_(
                 self.model.parameters(),
-                self.train_config.amx_grad_norm,
+                self.train_config.max_grad_norm,
             )
 
             self.optimizer.step()
-            self.optimzier.zero_grad(set_to_none=True)
+            self.optimizer.zero_grad(set_to_none=True)
 
         del input_ids, labels, response_mask, old_log_probs
         clear_memory()
@@ -681,7 +681,7 @@ class GRPOTrainer:
             if self.grpo_cur_step % self.train_config.eval_interval == 0:
                 clear_memory()
 
-                self.sample_responses(vllm=vllm, num_samplpes=3)
+                self.sample_responses(vllm=vllm, num_samples=3)
                 out = self.evaluate(vllm)
                 log_dict["eval/answer_accuracy"] = out["answer_accuracy"]
                 log_dict["eval/answer_correct"] = out["answer_correct"]
