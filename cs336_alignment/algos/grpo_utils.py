@@ -546,7 +546,7 @@ class GRPOTrainer:
             repeated_ground_truths=repeated_ground_truths,
             group_size=self.train_config.group_size,
             advantage_eps=self.train_config.advantage_eps,
-            normalized_by_std=self.train_config.norm_by_std,
+            normalize_by_std=self.train_config.norm_by_std,
         )
 
         print_color("Computing old log probabilities...", color="green")
