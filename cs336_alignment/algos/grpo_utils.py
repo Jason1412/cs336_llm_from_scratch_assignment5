@@ -771,4 +771,24 @@ class GRPOTrainer:
                            os.path.join(ckpt_dir, "optimizer.pt"))
                 clear_memory()
 
+                # Keep only the latest 3 checkpoints
+                import glob
+                import shutil
+                step_dirs = glob.glob(os.path.join(self.checkpoint_path, "step_*"))
+                if len(step_dirs) > 3:
+                    def _step_num(path):
+                        base = os.path.basename(path)
+                        try:
+                            return int(base.split("_")[1])
+                        except (IndexError, ValueError):
+                            return -1
+                    
+                    # Sort numerically
+                    step_dirs.sort(key=_step_num)
+                    
+                    # Delete all but the latest 3
+                    for d in step_dirs[:-3]:
+                        print_color(f"Removing old checkpoint: {d}", color="yellow")
+                        shutil.rmtree(d, ignore_errors=True)
+
             wandb.log(log_dict, step=self.grpo_cur_step)
