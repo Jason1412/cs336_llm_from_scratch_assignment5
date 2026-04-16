@@ -6,7 +6,7 @@ import fire
 import torch
 from transformers import AutoModelForCausalLM
 
-from cs336_alignment.algs import GRPOTrainConfig, GRPOTrainer
+from cs336_alignment.algos.grpo_utils import GRPOTrainConfig, GRPOTrainer
 from cs336_alignment.utils import get_device, print_color, seed_everything
 from cs336_alignment.vllm_utils import init_vllm
 
