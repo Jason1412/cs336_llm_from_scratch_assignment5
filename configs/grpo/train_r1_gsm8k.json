@@ -32,6 +32,6 @@
     "</answer>"
   ],
   "mixed_precision_training": true,
-  "eval_interval": 5,
+  "eval_interval": 10,
   "checkpoint_dir": "./checkpoints"
 }

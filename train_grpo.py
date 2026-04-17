@@ -18,7 +18,7 @@ from cs336_alignment.vllm_utils import init_vllm
 
 
 def main(
-    train_config_path: str = "configs/grpo/train_r1_math.json",
+    train_config_path: str = "configs/grpo/train_r1_gsm8k.json",
     dataset_name: str = "math",
     resume: bool = False,
 ):
@@ -91,6 +91,7 @@ def main(
 
     if resume:
         from cs336_alignment.vllm_utils import load_policy_into_vllm_instance
+
         did_resume = grpo_trainer.resume_from_latest_checkpoint()
         if did_resume:
             # Sync resumed model weights into vLLM so generation matches
